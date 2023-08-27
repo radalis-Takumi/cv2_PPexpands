@@ -276,6 +276,36 @@ class Ellipse:
         if self.framecolor:
             cv2.ellipse(img, self.cpt, self.axes, -self.rotate, -self.startAngle, -self.endAngle, self.framecolor, thickness=1, lineType=cv2.LINE_AA)
 
+class BarGraph:
+    def __init__(self, cpt, width, height, barw=2, baselinecolor=None, data=[], color=[(0,0,0)]):
+        self.cpt = cpt
+        self.width = width
+        self.height = height
+        self.barw = barw
+        self.baselinecolor = baselinecolor
+        self.color = color
+        self.inputData(data)
+    
+    def inputData(self, data):
+        self.data = data
+        self.maxh = 1
+        for v in self.data:
+            for elv in v[1:]:
+                if elv > self.maxh:
+                    self.maxh = elv
+
+    def draw(self, img):
+        if self.baselinecolor:
+            cv2.line(img, (round(self.cpt[0] - self.width/2), self.cpt[1]), (round(self.cpt[0] + self.width/2), self.cpt[1]), self.baselinecolor, thickness=1)
+        for i, v in enumerate(self.data):
+            for j, w in enumerate(v[1:]):
+                tmp_barw = self.barw/len(v[1:])
+                x_pt = self.cpt[0] - (len(self.data) - 1 - i*2) * self.width/(len(self.data) * 2)
+                y_pt = w * self.height/self.maxh
+                cv2.rectangle(img, (round(x_pt - self.barw/2 + tmp_barw*j), round(self.cpt[1] - y_pt)), 
+                            (round(x_pt - self.barw/2 + tmp_barw*(j+1)), round(self.cpt[1])), self.color[j], thickness=-1)
+        return img
+
 class Calender:
     def __init__(self, cpt, year, month, size=10):
         self.year = year
