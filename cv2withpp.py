@@ -1,11 +1,150 @@
 import cv2
 import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 import math
 
 def makeCanvas(width, height, color=(255, 255, 255)):
     img = np.full((height, width, 3), 255, dtype=np.uint8)
     cv2.rectangle(img, (0, 0), (width - 1, height - 1), color, -1)
     return img
+
+def cv2_putText(img, text, org, fontFace, fontScale, color, mode=None, anchor=None):
+    """
+    mode:
+        0:left bottom, 1:left ascender, 2:middle middle,
+        3:left top, 4:left baseline
+    anchor:
+        lb:left bottom, la:left ascender, mm: middle middle,
+        lt:left top, ls:left baseline
+    """
+
+    # テキスト描画域を取得
+    x, y = org
+    fontPIL = ImageFont.truetype(font = fontFace, size = fontScale)
+    dummy_draw = ImageDraw.Draw(Image.new("L", (0,0)))
+    xL, yT, xR, yB = dummy_draw.multiline_textbbox((x, y), text, font=fontPIL)
+
+    # modeおよびanchorによる座標の変換
+    img_h, img_w = img.shape[:2]
+    if mode is None and anchor is None:
+        offset_x, offset_y = xL - x, yB - y
+    elif mode == 0 or anchor == "lb":
+        offset_x, offset_y = xL - x, yB - y
+    elif mode == 1 or anchor == "la":
+        offset_x, offset_y = 0, 0
+    elif mode == 2 or anchor == "mm":
+        offset_x, offset_y = (xR + xL)//2 - x, (yB + yT)//2 - y
+    elif mode == 3 or anchor == "lt":
+        offset_x, offset_y = xL - x, yT - y
+    elif mode == 4 or anchor == "ls":
+        _, descent = ImageFont.FreeTypeFont(fontFace, fontScale).getmetrics()
+        offset_x, offset_y = xL - x, yB - y - descent
+
+    x0, y0 = x - offset_x, y - offset_y
+    xL, yT = xL - offset_x, yT - offset_y
+    xR, yB = xR - offset_x, yB - offset_y
+
+    # バウンディングボックスを描画　不要ならコメントアウトする
+    cv2.rectangle(img, (xL,yT), (xR,yB), color, 1)
+
+    # 画面外なら何もしない
+    if xR<=0 or xL>=img_w or yB<=0 or yT>=img_h:
+        print("out of bounds")
+        return img
+
+    # ROIを取得する
+    x1, y1 = max([xL, 0]), max([yT, 0])
+    x2, y2 = min([xR, img_w]), min([yB, img_h])
+    roi = img[y1:y2, x1:x2]
+
+    # ROIをPIL化してテキスト描画しCV2に戻る
+    roiPIL = Image.fromarray(roi)
+    draw = ImageDraw.Draw(roiPIL)
+    draw.text((x0-x1, y0-y1), text, color, fontPIL)
+    roi = np.array(roiPIL, dtype=np.uint8)
+    img[y1:y2, x1:x2] = roi
+
+    return img
+
+class Textbox:
+    def __init__(self, text, org, fontFace, fontScale=10, fontcolor=(0,0,0), framecolor=None, mode=0, anchor=None):
+        """
+        mode:
+            0:left bottom, 1:left ascender, 2:middle middle,
+            3:left top, 4:left baseline
+        anchor:
+            lb:left bottom, la:left ascender, mm: middle middle,
+            lt:left top, ls:left baseline
+        """
+        self.text = text
+        self.cpt = org
+        self.fontFace = fontFace
+        self.fontScale = fontScale
+        self.fontcolor = fontcolor
+        self.framecolor = framecolor
+        self.mode = mode
+        if anchor and anchor in ['lb', 'la', 'mm', 'lt', 'ls']:
+            self.mode = {'lb':0, 'la':1, 'mm':2, 'lt':3, 'ls':4}[anchor]
+        self.setAria()
+        
+    # テキスト描画域を取得
+    def setAria(self):
+        self.fontPIL = ImageFont.truetype(font = self.fontFace, size = self.fontScale)
+        dummy_draw = ImageDraw.Draw(Image.new("L", (0,0)))
+        xL, yT, xR, yB = dummy_draw.multiline_textbbox(self.cpt, self.text, font=self.fontPIL)
+
+        # modeおよびanchorによる座標の変換
+        if self.mode == 0:
+            offset_x, offset_y = xL - self.cpt[0], yB - self.cpt[1]
+        elif self.mode == 1:
+            offset_x, offset_y = 0, 0
+        elif self.mode == 2:
+            offset_x, offset_y = (xR + xL)//2 - self.cpt[0], (yB + yT)//2 - self.cpt[1]
+        elif self.mode == 3:
+            offset_x, offset_y = xL - self.cpt[0], yT - self.cpt[1]
+        else: ## self.mode == 4:
+            _, descent = ImageFont.FreeTypeFont(self.fontFace, self.fontScale).getmetrics()
+            offset_x, offset_y = xL - self.cpt[0], yB - self.cpt[1] - descent
+
+        x0, y0 = self.cpt[0] - offset_x, self.cpt[1] - offset_y
+        xL, yT = xL - offset_x, yT - offset_y
+        xR, yB = xR - offset_x, yB - offset_y
+        self.Ariaorg = {'x0':x0, 'y0':y0, 'xL':xL, 'yT':yT, 'xR':xR, 'yB':yB}
+    
+    def setPram(self, fontFace=None, fontScale=None, mode=None):
+        if fontFace:
+            self.fontFace = fontFace
+        if fontScale:
+            self.fontScale = fontScale
+        if mode:
+            self.mode = mode
+        self.setAria()
+    
+    def draw(self, img):
+        img_h, img_w = img.shape[:2]
+        # 枠線を描画
+        if self.framecolor:
+            cv2.rectangle(img, (self.Ariaorg['xL'], self.Ariaorg['yT']),
+                           (self.Ariaorg['xR'], self.Ariaorg['yB']), self.framecolor, 1)
+
+        # 画面外なら何もしない
+        if self.Ariaorg['xR']<=0 or self.Ariaorg['xL']>=img_w or self.Ariaorg['yB']<=0 or self.Ariaorg['yT']>=img_h:
+            print("out of bounds")
+            return img
+
+        # ROIを取得する
+        x1, y1 = max([self.Ariaorg['xL'], 0]), max([self.Ariaorg['yT'], 0])
+        x2, y2 = min([self.Ariaorg['xR'], img_w]), min([self.Ariaorg['yB'], img_h])
+        roi = img[y1:y2, x1:x2]
+
+        # ROIをPIL化してテキスト描画しCV2に戻る
+        roiPIL = Image.fromarray(roi)
+        draw = ImageDraw.Draw(roiPIL)
+        draw.text((self.Ariaorg['x0']-x1, self.Ariaorg['y0']-y1), self.text, self.fontcolor, self.fontPIL)
+        roi = np.array(roiPIL, dtype=np.uint8)
+        img[y1:y2, x1:x2] = roi
+
+        return img
 
 class Rectangle:
     def __init__(self, cpt, width, height, rad=0, rotate=0, fillcolor=None, framecolor=None):
