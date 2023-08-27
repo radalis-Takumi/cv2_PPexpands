@@ -151,8 +151,8 @@ class Rectangle:
         self.cpt = cpt
         self.width = width
         self.height = height
-        self.rad = rad
-        self.rotate = rotate
+        self.rad = rad if rad <= min(self.width/2, self.height) else min(self.width/2, self.height)
+        self.rotate = rotate % 360
         self.fillcolor = fillcolor
         self.framecolor = framecolor
         self.para_change(rad=self.rad)
@@ -169,7 +169,7 @@ class Rectangle:
             self.radc_pts.append([round(cpt[0] + pt[0]), round(cpt[1] + pt[1])])
     
     def obj_rotete(self, rotate):
-        radians = math.radians(rotate)
+        radians = -math.radians(rotate) # 回転方向を一般的な感覚（反時計回り）に変更
         for i, pt in enumerate(self.b_pts1):
             self.b_pts1[i] = [math.cos(radians)*pt[0] - math.sin(radians)*pt[1], math.sin(radians)*pt[0] + math.cos(radians)*pt[1]]
         for i, pt in enumerate(self.b_pts2):
@@ -193,15 +193,14 @@ class Rectangle:
     
     def para_change(self, rad=None, rotate=None, cpt=None):
         if not rad is None:
-            self.obj_radChange(rad)
+            self.rad = rad if rad <= min(self.width/2, self.height) else min(self.width/2, self.height)
         if rotate:
-            self.obj_rotete(rotate)
-        else:
-            self.obj_rotete(self.rotate)
+            self.rotate = rotate % 360
         if cpt:
-            self.obj_move(cpt)
-        else:
-            self.obj_move(self.cpt)
+            self.cpt = cpt
+        self.obj_radChange(self.rad)
+        self.obj_rotete(self.rotate)
+        self.obj_move(self.cpt)
 
     def draw(self, img):
         h, w, _ = img.shape
@@ -218,15 +217,39 @@ class Rectangle:
         if self.framecolor:
             cv2.drawContours(img, contours, -1, self.framecolor, 1, lineType=cv2.LINE_AA)
         return img
+    
+class Ellipse:
+    def __init__(self, cpt, axes, rotate, startAngle=0, endAngle=360, fillcolor=None, framecolor=None):
+        self.cpt = cpt
+        self.axes = axes
+        self.rotate = rotate
+        self.startAngle = startAngle
+        self.endAngle = endAngle
+        self.fillcolor = fillcolor
+        self.framecolor = framecolor
+
+    def draw(self, img):
+        if self.fillcolor:
+            cv2.ellipse(img, self.cpt, self.axes, -self.rotate, -self.startAngle, -self.endAngle, self.fillcolor, thickness=-1, lineType=cv2.LINE_AA)
+        if self.framecolor:
+            cv2.ellipse(img, self.cpt, self.axes, -self.rotate, -self.startAngle, -self.endAngle, self.framecolor, thickness=1, lineType=cv2.LINE_AA)
 
 class Layer:
-    def __init__(self):
+    def __init__(self, img):
         self.objectList = []
+        self.base_img = img.copy()
+
+    def update_baseimg(self, img):
+        self.base_img = img.copy()
     
     def append(self, obj):
         self.objectList.append(obj)
 
-    def draw(self, img):
+    def draw(self, img=None):
+        if img:
+            draw_img = img.copy()
+        else:
+            draw_img = self.base_img.copy()
         for obj in self.objectList:
-            obj.draw(img)
-        return img
+            obj.draw(draw_img)
+        return draw_img
