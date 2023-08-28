@@ -11,64 +11,6 @@ def makeCanvas(width, height, color=(255, 255, 255)):
     cv2.rectangle(img, (0, 0), (width - 1, height - 1), color, -1)
     return img
 
-def cv2_putText(img, text, org, fontFace, fontScale, color, mode=None, anchor=None):
-    """
-    mode:
-        0:left bottom, 1:left ascender, 2:middle middle,
-        3:left top, 4:left baseline
-    anchor:
-        lb:left bottom, la:left ascender, mm: middle middle,
-        lt:left top, ls:left baseline
-    """
-
-    # テキスト描画域を取得
-    x, y = org
-    fontPIL = ImageFont.truetype(font = fontFace, size = fontScale)
-    dummy_draw = ImageDraw.Draw(Image.new("L", (0,0)))
-    xL, yT, xR, yB = dummy_draw.multiline_textbbox((x, y), text, font=fontPIL)
-
-    # modeおよびanchorによる座標の変換
-    img_h, img_w = img.shape[:2]
-    if mode is None and anchor is None:
-        offset_x, offset_y = xL - x, yB - y
-    elif mode == 0 or anchor == "lb":
-        offset_x, offset_y = xL - x, yB - y
-    elif mode == 1 or anchor == "la":
-        offset_x, offset_y = 0, 0
-    elif mode == 2 or anchor == "mm":
-        offset_x, offset_y = (xR + xL)//2 - x, (yB + yT)//2 - y
-    elif mode == 3 or anchor == "lt":
-        offset_x, offset_y = xL - x, yT - y
-    elif mode == 4 or anchor == "ls":
-        _, descent = ImageFont.FreeTypeFont(fontFace, fontScale).getmetrics()
-        offset_x, offset_y = xL - x, yB - y - descent
-
-    x0, y0 = x - offset_x, y - offset_y
-    xL, yT = xL - offset_x, yT - offset_y
-    xR, yB = xR - offset_x, yB - offset_y
-
-    # バウンディングボックスを描画　不要ならコメントアウトする
-    cv2.rectangle(img, (xL,yT), (xR,yB), color, 1)
-
-    # 画面外なら何もしない
-    if xR<=0 or xL>=img_w or yB<=0 or yT>=img_h:
-        print("out of bounds")
-        return img
-
-    # ROIを取得する
-    x1, y1 = max([xL, 0]), max([yT, 0])
-    x2, y2 = min([xR, img_w]), min([yB, img_h])
-    roi = img[y1:y2, x1:x2]
-
-    # ROIをPIL化してテキスト描画しCV2に戻る
-    roiPIL = Image.fromarray(roi)
-    draw = ImageDraw.Draw(roiPIL)
-    draw.text((x0-x1, y0-y1), text, color, fontPIL)
-    roi = np.array(roiPIL, dtype=np.uint8)
-    img[y1:y2, x1:x2] = roi
-
-    return img
-
 class Textbox:
     def __init__(self, text, org, fontFace, fontScale=10, fontcolor=(0,0,0), framecolor=None, mode=0, anchor=None):
         """
@@ -354,6 +296,71 @@ class Calender:
                        (self.cpt[0] - self.size * (5 - j * 2), self.cpt[1] - self.size * (4 - i * 2)), (0, 0, 0), thickness=1)
         for txtobj in self.txt_list:
             txtobj.draw(img)
+        return img
+    
+class Figure:
+    def __init__(self, path, cpt, scale=1.0, rotate=0, mode='nomal'):
+        self.mode = mode
+        if self.mode == 'alpha':
+            self.figure = cv2.imread(path, flags=cv2.IMREAD_UNCHANGED)
+        else: # mode == 'nomal'
+            self.figure = cv2.imread(path)
+        self.cpt = cpt
+        self.rotate = rotate
+        self.scale = scale
+        self.update()
+    
+    def setupIMG(self):
+        h, w = self.figure.shape[:2]
+        radian = math.radians(self.rotate)
+        # 回転後の画像サイズを計算
+        w_rot = int(np.round(h*np.absolute(np.sin(radian))+w*np.absolute(np.cos(radian))))
+        h_rot = int(np.round(h*np.absolute(np.cos(radian))+w*np.absolute(np.sin(radian))))
+        size_rot = (w_rot, h_rot)
+
+        # 元画像の中心を軸に回転する
+        rotation_matrix = cv2.getRotationMatrix2D((w/2, h/2), self.rotate, self.scale)
+
+        # 平行移動を加える (rotation + translation)
+        affine_matrix = rotation_matrix.copy()
+        affine_matrix[0][2] = affine_matrix[0][2] -w/2 + w_rot/2
+        affine_matrix[1][2] = affine_matrix[1][2] -h/2 + h_rot/2
+
+        # 画像を実際に回転させる
+        img_rot = cv2.warpAffine(self.figure, affine_matrix, size_rot, borderValue=(0, 255, 0))
+
+        # 透過処理
+        if self.mode == 'nomal':
+            # 任意色部分に対応するマスク画像を生成
+            mask = np.all(img_rot[:,:,:] == [0, 255, 0], axis=-1)
+            # 元画像をBGR形式からBGRA形式に変換
+            self.dst = cv2.cvtColor(img_rot, cv2.COLOR_BGR2BGRA)
+            # マスク画像をもとに、白色部分を透明化
+            self.dst[mask,3] = 0
+        else:
+            self.dst = img_rot.copy()
+
+    def update(self, cpt=None, scale=None, rotate=None):
+        if cpt:
+            self.cpt = cpt
+        if cpt:
+            self.scale = scale
+        if cpt:
+            self.rotate = rotate
+        self.setupIMG()
+
+    def draw(self, img):
+        # 貼り付け先座標の設定 - alpha_frame がはみ出す場合への対処つき
+        position = (round(self.cpt[0] - self.dst.shape[1]/2), round(self.cpt[1] - self.dst.shape[0]/2))
+        x1, y1 = max(position[0], 0), max(position[1], 0)
+        x2 = min(position[0] + self.dst.shape[1], img.shape[1])
+        y2 = min(position[1] + self.dst.shape[0], img.shape[0])
+        ax1, ay1 = x1 - position[0], y1 - position[1]
+        ax2, ay2 = ax1 + x2 - x1, ay1 + y2 - y1
+
+        # 合成!
+        img[y1:y2, x1:x2] = img[y1:y2, x1:x2] * (1 - self.dst[ay1:ay2, ax1:ax2, 3:] / 255) + \
+                            self.dst[ay1:ay2, ax1:ax2, :3] * (self.dst[ay1:ay2, ax1:ax2, 3:] / 255)
         return img
 
 
