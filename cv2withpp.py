@@ -56,7 +56,9 @@ class Textbox:
         xR, yB = xR - offset_x, yB - offset_y
         self.Ariaorg = {'x0':x0, 'y0':y0, 'xL':xL, 'yT':yT, 'xR':xR, 'yB':yB}
     
-    def setPram(self, fontFace=None, fontScale=None, mode=None):
+    def update(self, text=None, fontFace=None, fontScale=None, mode=None):
+        if not text is None:
+            self.text = text
         if fontFace:
             self.fontFace = fontFace
         if fontScale:
@@ -99,7 +101,7 @@ class Triangle:
         self.rotate = rotate
         self.fillcolor = fillcolor
         self.framecolor = framecolor
-        self.para_change()
+        self.update()
     
     def obj_move(self, cpt):
         self.pts = []
@@ -114,7 +116,7 @@ class Triangle:
         for i, pt in enumerate(self.b_pts):
             self.b_pts[i] = [math.cos(radians)*pt[0] - math.sin(radians)*pt[1], math.sin(radians)*pt[0] + math.cos(radians)*pt[1]]
     
-    def para_change(self, rotate=None, cpt=None):
+    def update(self, rotate=None, cpt=None):
         if rotate:
             self.rotate = rotate % 360
         if cpt:
@@ -139,7 +141,7 @@ class Rectangle:
         self.rotate = rotate % 360
         self.fillcolor = fillcolor
         self.framecolor = framecolor
-        self.para_change()
+        self.update()
         
     def obj_move(self, cpt):
         self.pts1 = []
@@ -175,7 +177,7 @@ class Rectangle:
                          [ (self.width/2 - rad),  (self.height/2 - rad)], 
                          [-(self.width/2 - rad),  (self.height/2 - rad)]]
     
-    def para_change(self, rad=None, rotate=None, cpt=None):
+    def update(self, rad=None, rotate=None, cpt=None):
         if not rad is None:
             self.rad = rad if rad <= min(self.width/2, self.height) else min(self.width/2, self.height)
         if rotate:
@@ -228,7 +230,7 @@ class BarGraph:
         self.color = color
         self.inputData(data)
     
-    def inputData(self, data):
+    def update(self, data):
         self.data = data
         self.maxh = 1
         for v in self.data:
@@ -254,9 +256,9 @@ class Calender:
         self.month = month
         self.cpt = cpt
         self.size = size
-        self.ymUpdate()
+        self.update()
     
-    def ymUpdate(self, cpt=None, year=None, month=None):
+    def update(self, cpt=None, year=None, month=None):
         if cpt:
             self.cpt = cpt
         if not year is None:
@@ -299,16 +301,42 @@ class Calender:
         return img
     
 class Figure:
-    def __init__(self, path, cpt, scale=1.0, rotate=0, mode='nomal'):
+    def __init__(self, path, cpt, width=None, height=None, scale=1.0, w_scale=1.0, h_scale=1.0, rotate=0, mode='nomal'):
+        '''
+        図を挿入するためのオブジェクト
+
+        サイズ指定の優先順位
+        width, height > scale > w_scale, h_scale
+        '''
+        self.figure = None
+        self.path = path
         self.mode = mode
-        if self.mode == 'alpha':
-            self.figure = cv2.imread(path, flags=cv2.IMREAD_UNCHANGED)
-        else: # mode == 'nomal'
-            self.figure = cv2.imread(path)
+        self.width = width
+        self.height = height
+        self.scale = scale
+        self.w_scale = w_scale
+        self.h_scale = h_scale
         self.cpt = cpt
         self.rotate = rotate
-        self.scale = scale
         self.update()
+    
+    def loadImgFile(self):
+        if self.mode == 'alpha':
+            self.figure = cv2.imread(self.path, flags=cv2.IMREAD_UNCHANGED)
+        else: # mode == 'nomal'
+            self.figure = cv2.imread(self.path)
+        if self.width and self.height:
+            dsize = list(self.figure.shape[:2])
+            if self.height:
+                dsize[0] = self.height
+            if self.width:
+                dsize[1] = self.width
+            self.figure = cv2.resize(self.figure, (dsize[1], dsize[0]))
+        elif self.scale != 1.0 or self.w_scale != 1.0 or self.h_scale != 1.0:
+            if self.scale != 1.0:
+                self.figure = cv2.resize(self.figure, None, fx = self.scale, fy = self.scale)
+            else:
+                self.figure = cv2.resize(self.figure, None, fx = self.w_scale, fy = self.h_scale)
     
     def setupIMG(self):
         h, w = self.figure.shape[:2]
@@ -319,7 +347,7 @@ class Figure:
         size_rot = (w_rot, h_rot)
 
         # 元画像の中心を軸に回転する
-        rotation_matrix = cv2.getRotationMatrix2D((w/2, h/2), self.rotate, self.scale)
+        rotation_matrix = cv2.getRotationMatrix2D((w/2, h/2), self.rotate, 1.0)
 
         # 平行移動を加える (rotation + translation)
         affine_matrix = rotation_matrix.copy()
@@ -340,13 +368,22 @@ class Figure:
         else:
             self.dst = img_rot.copy()
 
-    def update(self, cpt=None, scale=None, rotate=None):
+    def update(self, cpt=None, width=None, height=None, scale=None, w_scale=None, h_scale=None, rotate=None):
+        if width:
+            self.width = width
+        if height:
+            self.height = height
+        if scale:
+            self.scale = scale
+        if w_scale:
+            self.w_scale = w_scale
+        if h_scale:
+            self.h_scale = h_scale
         if cpt:
             self.cpt = cpt
-        if cpt:
-            self.scale = scale
-        if cpt:
+        if rotate:
             self.rotate = rotate
+        self.loadImgFile()
         self.setupIMG()
 
     def draw(self, img):
@@ -369,8 +406,11 @@ class Layer:
         self.objectList = []
         self.base_img = img.copy()
 
-    def update_baseimg(self, img):
-        self.base_img = img.copy()
+    def update_baseimg(self, img=None):
+        if img:
+            self.base_img = img.copy()
+        else:
+            self.base_img = self.draw()
     
     def append(self, obj):
         self.objectList.append(obj)
