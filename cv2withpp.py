@@ -402,9 +402,14 @@ class Figure:
 
 
 class Layer:
-    def __init__(self, img):
+    def __init__(self, img=None, width=400, height=300, color=(255, 255, 255), windowname='window'):
         self.objectList = []
-        self.base_img = img.copy()
+        if img:
+            self.base_img = img.copy()
+        else:
+            self.base_img = makeCanvas(width, height, color=color)
+        self.windowname = windowname
+        self.func_list = []
 
     def update_baseimg(self, img=None):
         if img:
@@ -414,6 +419,12 @@ class Layer:
     
     def append(self, obj):
         self.objectList.append(obj)
+    
+    def add_func(self, func, arg=()):
+        self.func_list.append({
+            "func": func,
+            "arg": arg
+        })
 
     def draw(self, img=None):
         if img:
@@ -423,3 +434,26 @@ class Layer:
         for obj in self.objectList:
             obj.draw(draw_img)
         return draw_img
+    
+    def isWindowExist(self, windowname):
+        try:
+            cv2.getWindowProperty(windowname, cv2.WND_PROP_AUTOSIZE)
+            return True
+        except:
+            return False
+    
+    def run(self, img=None, windowSizeVariable=False, FPS=None, interval=None):
+        windowFlag = cv2.WINDOW_NORMAL if windowSizeVariable else cv2.WINDOW_AUTOSIZE
+        setinterval = round(1000/FPS) if FPS else 1000
+        if interval:
+            setinterval = min(setinterval, interval)
+        cv2.namedWindow(self.windowname, windowFlag)
+        while True:
+            show_img = self.draw(img)
+            cv2.imshow(self.windowname, show_img)
+            cv2.waitKey(setinterval)
+            for func in self.func_list:
+                func["func"](*func["arg"])
+            if not self.isWindowExist(self.windowname):
+                break
+        cv2.destroyAllWindows()
