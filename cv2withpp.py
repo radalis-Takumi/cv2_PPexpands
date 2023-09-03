@@ -28,6 +28,7 @@ class Textbox:
         self.fontcolor = fontcolor
         self.framecolor = framecolor
         self.mode = mode
+        self.display = True
         if anchor and anchor in ['lb', 'la', 'mm', 'lt', 'ls']:
             self.mode = {'lb':0, 'la':1, 'mm':2, 'lt':3, 'ls':4}[anchor]
         self.setAria()
@@ -66,6 +67,12 @@ class Textbox:
         if mode:
             self.mode = mode
         self.setAria()
+        
+    def setDisplay(self, flag):
+        self.display = flag
+        
+    def getDisplay(self):
+        return self.display
     
     def draw(self, img):
         img_h, img_w = img.shape[:2]
@@ -101,6 +108,7 @@ class Triangle:
         self.rotate = rotate
         self.fillcolor = fillcolor
         self.framecolor = framecolor
+        self.display = True
         self.update()
     
     def obj_move(self, cpt):
@@ -123,6 +131,12 @@ class Triangle:
             self.cpt = cpt
         self.obj_rotete(self.rotate)
         self.obj_move(self.cpt)
+    
+    def setDisplay(self, flag):
+        self.display = flag
+        
+    def getDisplay(self):
+        return self.display
 
     def draw(self, img):
         pts = np.array(self.pts)
@@ -141,6 +155,7 @@ class Rectangle:
         self.rotate = rotate % 360
         self.fillcolor = fillcolor
         self.framecolor = framecolor
+        self.display = True
         self.update()
         
     def obj_move(self, cpt):
@@ -187,6 +202,12 @@ class Rectangle:
         self.obj_radChange(self.rad)
         self.obj_rotete(self.rotate)
         self.obj_move(self.cpt)
+        
+    def setDisplay(self, flag):
+        self.display = flag
+        
+    def getDisplay(self):
+        return self.display
 
     def draw(self, img):
         h, w, _ = img.shape
@@ -213,7 +234,14 @@ class Ellipse:
         self.endAngle = endAngle
         self.fillcolor = fillcolor
         self.framecolor = framecolor
-
+        self.display = True
+    
+    def setDisplay(self, flag):
+        self.display = flag
+        
+    def getDisplay(self):
+        return self.display
+    
     def draw(self, img):
         if self.fillcolor:
             cv2.ellipse(img, self.cpt, self.axes, -self.rotate, -self.startAngle, -self.endAngle, self.fillcolor, thickness=-1, lineType=cv2.LINE_AA)
@@ -228,6 +256,7 @@ class BarGraph:
         self.barw = barw
         self.baselinecolor = baselinecolor
         self.color = color
+        self.display = True
         self.inputData(data)
     
     def update(self, data):
@@ -237,7 +266,13 @@ class BarGraph:
             for elv in v[1:]:
                 if elv > self.maxh:
                     self.maxh = elv
-
+    
+    def setDisplay(self, flag):
+        self.display = flag
+        
+    def getDisplay(self):
+        return self.display
+    
     def draw(self, img):
         if self.baselinecolor:
             cv2.line(img, (round(self.cpt[0] - self.width/2), self.cpt[1]), (round(self.cpt[0] + self.width/2), self.cpt[1]), self.baselinecolor, thickness=1)
@@ -256,6 +291,7 @@ class Calender:
         self.month = month
         self.cpt = cpt
         self.size = size
+        self.display = True
         self.update()
     
     def update(self, cpt=None, year=None, month=None):
@@ -278,7 +314,12 @@ class Calender:
                     continue
                 self.txt_list.append(Textbox(str(day), (self.cpt[0] - self.size * (6 - j * 2), self.cpt[1] - self.size * (3 - i * 2)), 
                                      'C:\Windows\Fonts\msgothic.ttc', self.size, (0,0,0), anchor='mm'))
-
+    def setDisplay(self, flag):
+        self.display = flag
+        
+    def getDisplay(self):
+        return self.display
+    
     def draw(self, img):
         cv2.rectangle(img, (round(self.cpt[0] - self.size * 7.3), round(self.cpt[1] - self.size * 8.3)), 
                       (round(self.cpt[0] + self.size * 7.3), round(self.cpt[1] + self.size * 8.3)), (0, 0, 0), thickness=1)
@@ -318,6 +359,7 @@ class Figure:
         self.h_scale = h_scale
         self.cpt = cpt
         self.rotate = rotate
+        self.display = True
         self.update()
     
     def loadImgFile(self):
@@ -385,7 +427,13 @@ class Figure:
             self.rotate = rotate
         self.loadImgFile()
         self.setupIMG()
-
+    
+    def setDisplay(self, flag):
+        self.display = flag
+        
+    def getDisplay(self):
+        return self.display
+    
     def draw(self, img):
         # 貼り付け先座標の設定 - alpha_frame がはみ出す場合への対処つき
         position = (round(self.cpt[0] - self.dst.shape[1]/2), round(self.cpt[1] - self.dst.shape[0]/2))
@@ -400,11 +448,15 @@ class Figure:
                             self.dst[ay1:ay2, ax1:ax2, :3] * (self.dst[ay1:ay2, ax1:ax2, 3:] / 255)
         return img
 
-
 class Layer:
-    def __init__(self, img):
+    def __init__(self, img=None, width=400, height=300, color=(255, 255, 255), windowname='window'):
         self.objectList = []
-        self.base_img = img.copy()
+        if img:
+            self.base_img = img.copy()
+        else:
+            self.base_img = makeCanvas(width, height, color=color)
+        self.windowname = windowname
+        self.func_list = []
 
     def update_baseimg(self, img=None):
         if img:
@@ -414,6 +466,12 @@ class Layer:
     
     def append(self, obj):
         self.objectList.append(obj)
+    
+    def add_func(self, func, arg=()):
+        self.func_list.append({
+            "func": func,
+            "arg": arg
+        })
 
     def draw(self, img=None):
         if img:
@@ -421,5 +479,29 @@ class Layer:
         else:
             draw_img = self.base_img.copy()
         for obj in self.objectList:
-            obj.draw(draw_img)
+            if obj.getDisplay():
+                obj.draw(draw_img)
         return draw_img
+    
+    def isWindowExist(self, windowname):
+        try:
+            cv2.getWindowProperty(windowname, cv2.WND_PROP_AUTOSIZE)
+            return True
+        except:
+            return False
+    
+    def run(self, img=None, windowSizeVariable=False, FPS=None, interval=None):
+        windowFlag = cv2.WINDOW_NORMAL if windowSizeVariable else cv2.WINDOW_AUTOSIZE
+        setinterval = round(1000/FPS) if FPS else 1000
+        if interval:
+            setinterval = min(setinterval, interval)
+        cv2.namedWindow(self.windowname, windowFlag)
+        while True:
+            show_img = self.draw(img)
+            cv2.imshow(self.windowname, show_img)
+            cv2.waitKey(setinterval)
+            for func in self.func_list:
+                func["func"](*func["arg"])
+            if not self.isWindowExist(self.windowname):
+                break
+        cv2.destroyAllWindows()
