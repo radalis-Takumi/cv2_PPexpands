@@ -1,4 +1,4 @@
-# cv2-PPexpands
+# cv2_PPexpands
 cv2をパワポを使うようにコーディングするための拡張ライブラリです
 
 ## imstalation
