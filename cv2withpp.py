@@ -5,22 +5,64 @@ import jpholiday
 import datetime
 from PIL import Image, ImageDraw, ImageFont
 import math
+from concurrent import futures
 
 def makeCanvas(width, height, color=(255, 255, 255)):
     img = np.full((height, width, 3), 255, dtype=np.uint8)
     cv2.rectangle(img, (0, 0), (width - 1, height - 1), color, -1)
     return img
 
-class Textbox:
-    def __init__(self, text, org, fontFace, fontScale=10, fontcolor=(0,0,0), framecolor=None, mode=0, anchor=None):
+class cv2withPPObject:
+    def __init__(self, kay):
+        self.kay = kay
+        self.display = True
+        
+    def setKey(self, key):
+        self.kay = key
+    
+    def getKey(self):
+        return self.kay
+
+    def setDisplay(self, flag):
+        self.display = flag
+
+    def getDisplay(self):
+        return self.display
+
+class Textbox(cv2withPPObject):
+    """テキストボックス生成クラス
+    Attributes:
+        text (str): 表示する文字列
+        cpt (tuple): 文字列を表示する座標
+        fontFace (str): フォントファイルのパス
+        fontScale (int): フォントサイズ
+        fontcolor (tuple): フォントカラー
+        framecolor (tuple): 枠線の色（引数を指定しなかった場合枠線なし）
+        mode (int): 文字列を表示する座標の基準
+    """
+    def __init__(self, text:str, org:tuple, fontFace:str, fontScale=10, fontcolor=(0,0,0), framecolor=None, mode=0, anchor=None, key=''):
         """
+        text:
+            表示する文字列
+        org:
+            文字列を表示する座標
+        fontFace:
+            フォントファイルのパス
+        fontScale:
+            フォントサイズ
+        fontcolor:
+            フォントカラー
+        framecolor:
+            枠線の色（引数を指定しなかった場合枠線なし）
         mode:
+            文字列を表示する座標の基準
             0:left bottom, 1:left ascender, 2:middle middle,
             3:left top, 4:left baseline
         anchor:
             lb:left bottom, la:left ascender, mm: middle middle,
             lt:left top, ls:left baseline
         """
+        super().__init__(key)
         self.text = text
         self.cpt = org
         self.fontFace = fontFace
@@ -28,7 +70,6 @@ class Textbox:
         self.fontcolor = fontcolor
         self.framecolor = framecolor
         self.mode = mode
-        self.display = True
         if anchor and anchor in ['lb', 'la', 'mm', 'lt', 'ls']:
             self.mode = {'lb':0, 'la':1, 'mm':2, 'lt':3, 'ls':4}[anchor]
         self.setAria()
@@ -67,12 +108,6 @@ class Textbox:
         if mode:
             self.mode = mode
         self.setAria()
-        
-    def setDisplay(self, flag):
-        self.display = flag
-        
-    def getDisplay(self):
-        return self.display
     
     def draw(self, img):
         img_h, img_w = img.shape[:2]
@@ -100,15 +135,15 @@ class Textbox:
 
         return img
 
-class Triangle:
-    def __init__(self, cpt, width, height, rotate=0, fillcolor=None, framecolor=None):
+class Triangle(cv2withPPObject):
+    def __init__(self, cpt, width, height, rotate=0, fillcolor=None, framecolor=None, key=''):
+        super().__init__(key)
         self.cpt = cpt
         self.width = width
         self.height = height
         self.rotate = rotate
         self.fillcolor = fillcolor
         self.framecolor = framecolor
-        self.display = True
         self.update()
     
     def obj_move(self, cpt):
@@ -131,12 +166,6 @@ class Triangle:
             self.cpt = cpt
         self.obj_rotete(self.rotate)
         self.obj_move(self.cpt)
-    
-    def setDisplay(self, flag):
-        self.display = flag
-        
-    def getDisplay(self):
-        return self.display
 
     def draw(self, img):
         pts = np.array(self.pts)
@@ -146,8 +175,9 @@ class Triangle:
             cv2.polylines(img, [pts], True, self.framecolor, thickness=1, lineType=cv2.LINE_AA)
         return img
 
-class Rectangle:
-    def __init__(self, cpt, width, height, rad=0, rotate=0, fillcolor=None, framecolor=None):
+class Rectangle(cv2withPPObject):
+    def __init__(self, cpt, width, height, rad=0, rotate=0, fillcolor=None, framecolor=None, key=''):
+        super().__init__(key)
         self.cpt = cpt
         self.width = width
         self.height = height
@@ -155,7 +185,6 @@ class Rectangle:
         self.rotate = rotate % 360
         self.fillcolor = fillcolor
         self.framecolor = framecolor
-        self.display = True
         self.update()
         
     def obj_move(self, cpt):
@@ -202,12 +231,6 @@ class Rectangle:
         self.obj_radChange(self.rad)
         self.obj_rotete(self.rotate)
         self.obj_move(self.cpt)
-        
-    def setDisplay(self, flag):
-        self.display = flag
-        
-    def getDisplay(self):
-        return self.display
 
     def draw(self, img):
         h, w, _ = img.shape
@@ -225,8 +248,9 @@ class Rectangle:
             cv2.drawContours(img, contours, -1, self.framecolor, 1, lineType=cv2.LINE_AA)
         return img
     
-class Ellipse:
-    def __init__(self, cpt, axes, rotate, startAngle=0, endAngle=360, fillcolor=None, framecolor=None):
+class Ellipse(cv2withPPObject):
+    def __init__(self, cpt, axes, rotate, startAngle=0, endAngle=360, fillcolor=None, framecolor=None, key=''):
+        super().__init__(key)
         self.cpt = cpt
         self.axes = axes
         self.rotate = rotate
@@ -234,13 +258,6 @@ class Ellipse:
         self.endAngle = endAngle
         self.fillcolor = fillcolor
         self.framecolor = framecolor
-        self.display = True
-    
-    def setDisplay(self, flag):
-        self.display = flag
-        
-    def getDisplay(self):
-        return self.display
     
     def draw(self, img):
         if self.fillcolor:
@@ -249,7 +266,8 @@ class Ellipse:
             cv2.ellipse(img, self.cpt, self.axes, -self.rotate, -self.startAngle, -self.endAngle, self.framecolor, thickness=1, lineType=cv2.LINE_AA)
 
 class BarGraph:
-    def __init__(self, cpt, width, height, barw=2, baselinecolor=None, data=[], color=[(0,0,0)]):
+    def __init__(self, cpt, width, height, barw=2, baselinecolor=None, data=[], color=[(0,0,0)], key=''):
+        super().__init__(key)
         self.cpt = cpt
         self.width = width
         self.height = height
@@ -285,13 +303,13 @@ class BarGraph:
                             (round(x_pt - self.barw/2 + tmp_barw*(j+1)), round(self.cpt[1])), self.color[j], thickness=-1)
         return img
 
-class Calender:
-    def __init__(self, cpt, year, month, size=10):
+class Calender(cv2withPPObject):
+    def __init__(self, cpt, year, month, size=10, key=''):
+        super().__init__(key)
         self.year = year
         self.month = month
         self.cpt = cpt
         self.size = size
-        self.display = True
         self.update()
     
     def update(self, cpt=None, year=None, month=None):
@@ -314,11 +332,6 @@ class Calender:
                     continue
                 self.txt_list.append(Textbox(str(day), (self.cpt[0] - self.size * (6 - j * 2), self.cpt[1] - self.size * (3 - i * 2)), 
                                      'C:\Windows\Fonts\msgothic.ttc', self.size, (0,0,0), anchor='mm'))
-    def setDisplay(self, flag):
-        self.display = flag
-        
-    def getDisplay(self):
-        return self.display
     
     def draw(self, img):
         cv2.rectangle(img, (round(self.cpt[0] - self.size * 7.3), round(self.cpt[1] - self.size * 8.3)), 
@@ -341,14 +354,15 @@ class Calender:
             txtobj.draw(img)
         return img
     
-class Figure:
-    def __init__(self, path, cpt, width=None, height=None, scale=1.0, w_scale=1.0, h_scale=1.0, rotate=0, mode='nomal'):
+class Figure(cv2withPPObject):
+    def __init__(self, path, cpt, width=None, height=None, scale=1.0, w_scale=1.0, h_scale=1.0, rotate=0, mode='normal', key=''):
         '''
         図を挿入するためのオブジェクト
 
         サイズ指定の優先順位
         width, height > scale > w_scale, h_scale
         '''
+        super().__init__(key)
         self.figure = None
         self.path = path
         self.mode = mode
@@ -359,13 +373,12 @@ class Figure:
         self.h_scale = h_scale
         self.cpt = cpt
         self.rotate = rotate
-        self.display = True
         self.update()
     
     def loadImgFile(self):
         if self.mode == 'alpha':
             self.figure = cv2.imread(self.path, flags=cv2.IMREAD_UNCHANGED)
-        else: # mode == 'nomal'
+        else: # mode == 'normal'
             self.figure = cv2.imread(self.path)
         if self.width and self.height:
             dsize = list(self.figure.shape[:2])
@@ -400,7 +413,7 @@ class Figure:
         img_rot = cv2.warpAffine(self.figure, affine_matrix, size_rot, borderValue=(0, 255, 0))
 
         # 透過処理
-        if self.mode == 'nomal':
+        if self.mode == 'normal':
             # 任意色部分に対応するマスク画像を生成
             mask = np.all(img_rot[:,:,:] == [0, 255, 0], axis=-1)
             # 元画像をBGR形式からBGRA形式に変換
@@ -428,12 +441,6 @@ class Figure:
         self.loadImgFile()
         self.setupIMG()
     
-    def setDisplay(self, flag):
-        self.display = flag
-        
-    def getDisplay(self):
-        return self.display
-    
     def draw(self, img):
         # 貼り付け先座標の設定 - alpha_frame がはみ出す場合への対処つき
         position = (round(self.cpt[0] - self.dst.shape[1]/2), round(self.cpt[1] - self.dst.shape[0]/2))
@@ -456,7 +463,17 @@ class Layer:
         else:
             self.base_img = makeCanvas(width, height, color=color)
         self.windowname = windowname
-        self.func_list = []
+        self.callbacklist = []
+        self.callback_useSelf_list = []
+    
+    def __setitem__(self, key, value):
+        value.setKey(str(key))
+        self.objectList.append(value)
+
+    def __getitem__(self, key):
+        for v in self.objectList:
+            if v.getKey() == key:
+                return v
 
     def update_baseimg(self, img=None):
         if img:
@@ -467,8 +484,14 @@ class Layer:
     def append(self, obj):
         self.objectList.append(obj)
     
-    def add_func(self, func, arg=()):
-        self.func_list.append({
+    def addCallback(self, func, arg=()):
+        self.callbacklist.append({
+            "func": func,
+            "arg": arg
+        })
+    
+    def addCallback_useSelf(self, func, arg=()):
+        self.callback_useSelf_list.append({
             "func": func,
             "arg": arg
         })
@@ -500,8 +523,16 @@ class Layer:
             show_img = self.draw(img)
             cv2.imshow(self.windowname, show_img)
             cv2.waitKey(setinterval)
-            for func in self.func_list:
+            # コールバック関数を動作させる
+            for func in self.callbacklist:
                 func["func"](*func["arg"])
+            for func in self.callback_useSelf_list:
+                func["func"](self, *func["arg"])
             if not self.isWindowExist(self.windowname):
                 break
         cv2.destroyAllWindows()
+        return 'finish run'
+    
+    def run_Async(self, img=None, windowSizeVariable=False, FPS=None, interval=None):
+        executor = futures.ThreadPoolExecutor()
+        self.async_result = executor.submit(self.run, img, windowSizeVariable, FPS, interval)
