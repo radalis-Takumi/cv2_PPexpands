@@ -136,6 +136,15 @@ class Textbox(cv2withPPObject):
         return img
 
 class Triangle(cv2withPPObject):
+    """三角形生成クラス
+    Attributes:
+        cpt (tuple): 三角形の中心座標
+        width (int): 三角形の底辺の長さ
+        height (int): 三角形の高さ
+        rotate (int): 回転角度()（反時計回り）
+        fillcolor (tuple): 塗り潰し色（引数を指定しなかった場合枠線なし）
+        framecolor (tuple): 枠線の色（引数を指定しなかった場合枠線なし）
+    """
     def __init__(self, cpt, width, height, rotate=0, fillcolor=None, framecolor=None, key=''):
         super().__init__(key)
         self.cpt = cpt
@@ -176,6 +185,16 @@ class Triangle(cv2withPPObject):
         return img
 
 class Rectangle(cv2withPPObject):
+    """四角形生成クラス
+    Attributes:
+        cpt (tuple): 四角形の中心座標
+        width (int): 四角形の横の長さ
+        height (int): 四角形の縦の長さ
+        rad (int): 四隅の半径
+        rotate (int): 回転角度（反時計回り）
+        fillcolor (tuple): 塗り潰し色（引数を指定しなかった場合枠線なし）
+        framecolor (tuple): 枠線の色（引数を指定しなかった場合枠線なし）
+    """
     def __init__(self, cpt, width, height, rad=0, rotate=0, fillcolor=None, framecolor=None, key=''):
         super().__init__(key)
         self.cpt = cpt
