@@ -5,6 +5,7 @@ import jpholiday
 import datetime
 from PIL import Image, ImageDraw, ImageFont
 import math
+import queue
 from concurrent import futures
 
 def makeCanvas(width, height, color=(255, 255, 255)):
@@ -484,6 +485,8 @@ class Layer:
         self.windowname = windowname
         self.callbacklist = []
         self.callback_useSelf_list = []
+        self.queue_dict = {}
+        self.async_result = None
     
     def __setitem__(self, key, value):
         value.setKey(str(key))
@@ -494,14 +497,28 @@ class Layer:
             if v.getKey() == key:
                 return v
 
-    def update_baseimg(self, img=None):
+    def update_baseimg(self, img=None, refresh=True):
         if img:
             self.base_img = img.copy()
         else:
             self.base_img = self.draw()
+            if refresh:
+                self.objectList = []
     
     def append(self, obj):
         self.objectList.append(obj)
+
+    def setQueue(self, key):
+        self.queue_dict[key] = queue.Queue()
+
+    def getQueue(self, key):
+        if key in self.queue_dict:
+            if not self.queue_list[key].empty():
+                return True, self.queue_list[key]
+            else:
+                return False, "empty"
+        else:
+            return False, "no key"
     
     def addCallback(self, func, arg=()):
         self.callbacklist.append({
@@ -555,3 +572,12 @@ class Layer:
     def run_Async(self, img=None, windowSizeVariable=False, FPS=None, interval=None):
         executor = futures.ThreadPoolExecutor()
         self.async_result = executor.submit(self.run, img, windowSizeVariable, FPS, interval)
+
+    def getResult(self):
+        if self.async_result:
+            if self.async_result.running():
+                return False, "running"
+            else:
+                return True, self.async_result.result()
+        else:
+            return False, "no run"
