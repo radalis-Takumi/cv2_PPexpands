@@ -15,6 +15,7 @@ def main():
     for i in range(10):
         time.sleep(1)
         print(i)
+        print(layer.getResult())
 
 if __name__ == '__main__':
     main()
