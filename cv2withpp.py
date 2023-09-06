@@ -29,6 +29,9 @@ class cv2withPPObject:
 
     def getDisplay(self):
         return self.display
+    
+    def addAnimationCallback(self, callback):
+        self.callback = callback
 
 class Textbox(cv2withPPObject):
     """テキストボックス生成クラス
@@ -111,6 +114,8 @@ class Textbox(cv2withPPObject):
         self.setAria()
     
     def draw(self, img):
+        if self.addAnimationCallback:
+            self.addAnimationCallback()
         img_h, img_w = img.shape[:2]
         # 枠線を描画
         if self.framecolor:
@@ -178,6 +183,8 @@ class Triangle(cv2withPPObject):
         self.obj_move(self.cpt)
 
     def draw(self, img):
+        if self.addAnimationCallback:
+            self.addAnimationCallback()
         pts = np.array(self.pts)
         if self.fillcolor:
             cv2.fillPoly(img, [pts], self.fillcolor, lineType=cv2.LINE_AA)
@@ -253,6 +260,8 @@ class Rectangle(cv2withPPObject):
         self.obj_move(self.cpt)
 
     def draw(self, img):
+        if self.addAnimationCallback:
+            self.addAnimationCallback()
         h, w, _ = img.shape
         tmpimg = np.full((h, w, 1), 0, dtype=np.uint8)
         pts1 = np.array(self.pts1)
@@ -280,12 +289,14 @@ class Ellipse(cv2withPPObject):
         self.framecolor = framecolor
     
     def draw(self, img):
+        if self.addAnimationCallback:
+            self.addAnimationCallback()
         if self.fillcolor:
             cv2.ellipse(img, self.cpt, self.axes, -self.rotate, -self.startAngle, -self.endAngle, self.fillcolor, thickness=-1, lineType=cv2.LINE_AA)
         if self.framecolor:
             cv2.ellipse(img, self.cpt, self.axes, -self.rotate, -self.startAngle, -self.endAngle, self.framecolor, thickness=1, lineType=cv2.LINE_AA)
 
-class BarGraph:
+class BarGraph(cv2withPPObject):
     def __init__(self, cpt, width, height, barw=2, baselinecolor=None, data=[], color=[(0,0,0)], key=''):
         super().__init__(key)
         self.cpt = cpt
@@ -312,6 +323,8 @@ class BarGraph:
         return self.display
     
     def draw(self, img):
+        if self.addAnimationCallback:
+            self.addAnimationCallback()
         if self.baselinecolor:
             cv2.line(img, (round(self.cpt[0] - self.width/2), self.cpt[1]), (round(self.cpt[0] + self.width/2), self.cpt[1]), self.baselinecolor, thickness=1)
         for i, v in enumerate(self.data):
@@ -354,6 +367,8 @@ class Calender(cv2withPPObject):
                                      'C:\Windows\Fonts\msgothic.ttc', self.size, (0,0,0), anchor='mm'))
     
     def draw(self, img):
+        if self.addAnimationCallback:
+            self.addAnimationCallback()
         cv2.rectangle(img, (round(self.cpt[0] - self.size * 7.3), round(self.cpt[1] - self.size * 8.3)), 
                       (round(self.cpt[0] + self.size * 7.3), round(self.cpt[1] + self.size * 8.3)), (0, 0, 0), thickness=1)
         cv2.rectangle(img, (round(self.cpt[0] - self.size * 7), round(self.cpt[1] - self.size * 8)), 
@@ -462,6 +477,8 @@ class Figure(cv2withPPObject):
         self.setupIMG()
     
     def draw(self, img):
+        if self.addAnimationCallback:
+            self.addAnimationCallback()
         # 貼り付け先座標の設定 - alpha_frame がはみ出す場合への対処つき
         position = (round(self.cpt[0] - self.dst.shape[1]/2), round(self.cpt[1] - self.dst.shape[0]/2))
         x1, y1 = max(position[0], 0), max(position[1], 0)
@@ -478,6 +495,7 @@ class Figure(cv2withPPObject):
 class Layer:
     def __init__(self, img=None, width=400, height=300, color=(255, 255, 255), windowname='window'):
         self.objectList = []
+        self.setMouseImg('./img/mouse_white.png', 'alpha')
         if img:
             self.base_img = img.copy()
         else:
@@ -508,13 +526,26 @@ class Layer:
     def append(self, obj):
         self.objectList.append(obj)
 
+    def setMouseImg(self, path, mode):
+        self.mouse = Figure(path, (0, 0), mode=mode)
+        self.mouse.setDisplay(False)
+    
+    def displayMouse(self, flag):
+        self.mouse.setDisplay(flag)
+
     def setQueue(self, key):
         self.queue_dict[key] = queue.Queue()
 
+    def putQueue(self, key):
+        if key in self.queue_dict:
+            self.queue_dict[key].put()
+        else:
+            return False, "no key"
+
     def getQueue(self, key):
         if key in self.queue_dict:
-            if not self.queue_list[key].empty():
-                return True, self.queue_list[key]
+            if not self.queue_dict[key].empty():
+                return True, self.queue_dict[key].get()
             else:
                 return False, "empty"
         else:
@@ -531,6 +562,10 @@ class Layer:
             "func": func,
             "arg": arg
         })
+    
+    def mouseEvents(self, event, x, y, flags, param):
+        if event == cv2.EVENT_MOUSEMOVE:
+            self.mouse.update(cpt=(x, y))
 
     def draw(self, img=None):
         if img:
@@ -540,6 +575,8 @@ class Layer:
         for obj in self.objectList:
             if obj.getDisplay():
                 obj.draw(draw_img)
+        if self.mouse.getDisplay():
+            self.mouse.draw(draw_img)
         return draw_img
     
     def isWindowExist(self, windowname):
@@ -555,6 +592,7 @@ class Layer:
         if interval:
             setinterval = min(setinterval, interval)
         cv2.namedWindow(self.windowname, windowFlag)
+        cv2.setMouseCallback(self.windowname, self.mouseEvents)
         while True:
             show_img = self.draw(img)
             cv2.imshow(self.windowname, show_img)

@@ -11,7 +11,8 @@ def main():
     figure = cv2withpp.Figure('./sample/test.png', (50, 100), rotate=45, mode='alpha')
     layer['figure1'] = figure
     layer.addCallback_useSelf(test3)
-    layer.run_Async(interval=100)
+    layer.displayMouse(True)
+    layer.run_Async(interval=10)
     for i in range(10):
         time.sleep(1)
         print(i)
