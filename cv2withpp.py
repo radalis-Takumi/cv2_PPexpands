@@ -17,6 +17,15 @@ class cv2withPPObject:
     def __init__(self, kay):
         self.kay = kay
         self.display = True
+        self.eventLisnner = False
+        self.callback = []
+        self.mouseEventCallback = []
+    
+    def getEventLisnner(self):
+        return self.eventLisnner
+    
+    def setEventLisnner(self, flag: bool):
+        self.eventLisnner = flag
         
     def setKey(self, key):
         self.kay = key
@@ -31,7 +40,30 @@ class cv2withPPObject:
         return self.display
     
     def addAnimationCallback(self, callback):
-        self.callback = callback
+        self.callback.append(callback)
+
+    def addMouseEventCallback(self, callback):
+        self.mouseEventCallback.append(callback)
+
+    def isInner(self, pts_list, point):
+        # 原点から各点へのベクトルを作る
+        vec_list = []
+        for pts in pts_list:
+            vec_list.append(np.array(pts))
+        target_vec = np.array(point)
+        
+        # 外積を求める
+        vec_cross_list = []
+        for i in range(len(vec_list)):
+            vec_cross_list.append(np.cross(vec_list[(i + 1) % len(vec_list)] - vec_list[i], target_vec - vec_list[i]))
+
+        # 内外の判定を行う
+        for vec_cross in vec_cross_list:
+            if vec_cross <= 0:
+                return False
+        else:
+            return True
+
 
 class Textbox(cv2withPPObject):
     """テキストボックス生成クラス
@@ -112,10 +144,17 @@ class Textbox(cv2withPPObject):
         if mode:
             self.mode = mode
         self.setAria()
+
+    def isPtsInner(self, mouse_pts):
+        pts = [[self.Ariaorg['xL'], self.Ariaorg['yT']],
+               [self.Ariaorg['xL'], self.Ariaorg['yB']],
+               [self.Ariaorg['xR'], self.Ariaorg['yB']],
+               [self.Ariaorg['xR'], self.Ariaorg['yT']]]
+        return self.isInner(pts, mouse_pts)
     
     def draw(self, img):
-        if self.addAnimationCallback:
-            self.addAnimationCallback()
+        for callback in self.callback:
+            callback()
         img_h, img_w = img.shape[:2]
         # 枠線を描画
         if self.framecolor:
@@ -160,7 +199,7 @@ class Triangle(cv2withPPObject):
         self.fillcolor = fillcolor
         self.framecolor = framecolor
         self.update()
-    
+        
     def obj_move(self, cpt):
         self.pts = []
         for pt in self.b_pts:
@@ -182,9 +221,12 @@ class Triangle(cv2withPPObject):
         self.obj_rotete(self.rotate)
         self.obj_move(self.cpt)
 
+    def isPtsInner(self, mouse_pts):
+        return self.isInner(self.pts, mouse_pts)
+
     def draw(self, img):
-        if self.addAnimationCallback:
-            self.addAnimationCallback()
+        for callback in self.callback:
+            callback()
         pts = np.array(self.pts)
         if self.fillcolor:
             cv2.fillPoly(img, [pts], self.fillcolor, lineType=cv2.LINE_AA)
@@ -193,15 +235,25 @@ class Triangle(cv2withPPObject):
         return img
 
 class Rectangle(cv2withPPObject):
-    """四角形生成クラス
-    Attributes:
-        cpt (tuple): 四角形の中心座標
-        width (int): 四角形の横の長さ
-        height (int): 四角形の縦の長さ
-        rad (int): 四隅の半径
-        rotate (int): 回転角度(degree)（反時計回り）
-        fillcolor (tuple): 塗り潰し色（引数を指定しなかった場合枠線なし）
-        framecolor (tuple): 枠線の色（引数を指定しなかった場合枠線なし）
+    """
+    四角形生成クラス
+    -------------
+    Parameters
+
+    cpt (tuple):
+        四角形の中心座標
+    width (int):
+        四角形の横の長さ
+    height (int):
+        四角形の縦の長さ
+    rad (int):
+        四隅の半径
+    rotate (int):
+        回転角度(degree)（反時計回り）
+    fillcolor (tuple):
+        塗り潰し色（引数を指定しなかった場合枠線なし）
+    framecolor (tuple):
+        枠線の色（引数を指定しなかった場合枠線なし）
     """
     def __init__(self, cpt, width, height, rad=0, rotate=0, fillcolor=None, framecolor=None, key=''):
         super().__init__(key)
@@ -259,9 +311,12 @@ class Rectangle(cv2withPPObject):
         self.obj_rotete(self.rotate)
         self.obj_move(self.cpt)
 
+    def isPtsInner(self, mouse_pts):
+        return self.isInner(self.contours, mouse_pts)
+
     def draw(self, img):
-        if self.addAnimationCallback:
-            self.addAnimationCallback()
+        for callback in self.callback:
+            callback()
         h, w, _ = img.shape
         tmpimg = np.full((h, w, 1), 0, dtype=np.uint8)
         pts1 = np.array(self.pts1)
@@ -270,11 +325,12 @@ class Rectangle(cv2withPPObject):
         cv2.fillPoly(tmpimg, [pts2], (255, 255, 255), lineType=cv2.LINE_AA, shift=0)
         for c_pts in self.radc_pts:
             cv2.circle(tmpimg, (c_pts[0], c_pts[1]), self.rad, (255, 255, 255), thickness=-1, lineType=cv2.LINE_AA)
-        contours, hierarchy = cv2.findContours(tmpimg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        self.contours, hierarchy = cv2.findContours(tmpimg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        print(self.contours)
         if self.fillcolor:
-            cv2.drawContours(img, contours, -1, self.fillcolor, -1, lineType=cv2.LINE_AA)
+            cv2.drawContours(img, self.contours, -1, self.fillcolor, -1, lineType=cv2.LINE_AA)
         if self.framecolor:
-            cv2.drawContours(img, contours, -1, self.framecolor, 1, lineType=cv2.LINE_AA)
+            cv2.drawContours(img, self.contours, -1, self.framecolor, 1, lineType=cv2.LINE_AA)
         return img
     
 class Ellipse(cv2withPPObject):
@@ -289,8 +345,8 @@ class Ellipse(cv2withPPObject):
         self.framecolor = framecolor
     
     def draw(self, img):
-        if self.addAnimationCallback:
-            self.addAnimationCallback()
+        for callback in self.callback:
+            callback()
         if self.fillcolor:
             cv2.ellipse(img, self.cpt, self.axes, -self.rotate, -self.startAngle, -self.endAngle, self.fillcolor, thickness=-1, lineType=cv2.LINE_AA)
         if self.framecolor:
@@ -323,8 +379,8 @@ class BarGraph(cv2withPPObject):
         return self.display
     
     def draw(self, img):
-        if self.addAnimationCallback:
-            self.addAnimationCallback()
+        for callback in self.callback:
+            callback()
         if self.baselinecolor:
             cv2.line(img, (round(self.cpt[0] - self.width/2), self.cpt[1]), (round(self.cpt[0] + self.width/2), self.cpt[1]), self.baselinecolor, thickness=1)
         for i, v in enumerate(self.data):
@@ -367,8 +423,8 @@ class Calender(cv2withPPObject):
                                      'C:\Windows\Fonts\msgothic.ttc', self.size, (0,0,0), anchor='mm'))
     
     def draw(self, img):
-        if self.addAnimationCallback:
-            self.addAnimationCallback()
+        for callback in self.callback:
+            callback()
         cv2.rectangle(img, (round(self.cpt[0] - self.size * 7.3), round(self.cpt[1] - self.size * 8.3)), 
                       (round(self.cpt[0] + self.size * 7.3), round(self.cpt[1] + self.size * 8.3)), (0, 0, 0), thickness=1)
         cv2.rectangle(img, (round(self.cpt[0] - self.size * 7), round(self.cpt[1] - self.size * 8)), 
@@ -390,7 +446,7 @@ class Calender(cv2withPPObject):
         return img
     
 class Figure(cv2withPPObject):
-    def __init__(self, path, cpt, width=None, height=None, scale=1.0, w_scale=1.0, h_scale=1.0, rotate=0, mode='normal', key=''):
+    def __init__(self, path, cpt, width=None, height=None, scale=1.0, w_scale=1.0, h_scale=1.0, rotate=0, mode='rgb', key=''):
         '''
         図を挿入するためのオブジェクト
 
@@ -411,7 +467,7 @@ class Figure(cv2withPPObject):
         self.update()
     
     def loadImgFile(self):
-        if self.mode == 'alpha':
+        if self.mode == 'rgba':
             self.figure = cv2.imread(self.path, flags=cv2.IMREAD_UNCHANGED)
         else: # mode == 'normal'
             self.figure = cv2.imread(self.path)
@@ -448,7 +504,7 @@ class Figure(cv2withPPObject):
         img_rot = cv2.warpAffine(self.figure, affine_matrix, size_rot, borderValue=(0, 255, 0))
 
         # 透過処理
-        if self.mode == 'normal':
+        if self.mode == 'rgb':
             # 任意色部分に対応するマスク画像を生成
             mask = np.all(img_rot[:,:,:] == [0, 255, 0], axis=-1)
             # 元画像をBGR形式からBGRA形式に変換
@@ -477,8 +533,8 @@ class Figure(cv2withPPObject):
         self.setupIMG()
     
     def draw(self, img):
-        if self.addAnimationCallback:
-            self.addAnimationCallback()
+        for callback in self.callback:
+            callback()
         # 貼り付け先座標の設定 - alpha_frame がはみ出す場合への対処つき
         position = (round(self.cpt[0] - self.dst.shape[1]/2), round(self.cpt[1] - self.dst.shape[0]/2))
         x1, y1 = max(position[0], 0), max(position[1], 0)
@@ -495,7 +551,7 @@ class Figure(cv2withPPObject):
 class Layer:
     def __init__(self, img=None, width=400, height=300, color=(255, 255, 255), windowname='window'):
         self.objectList = []
-        self.setMouseImg('./img/mouse_white.png', 'alpha')
+        self.setMouseImg('./img/mouse_white.png', 'rgba')
         if img:
             self.base_img = img.copy()
         else:
@@ -566,6 +622,10 @@ class Layer:
     def mouseEvents(self, event, x, y, flags, param):
         if event == cv2.EVENT_MOUSEMOVE:
             self.mouse.update(cpt=(x, y))
+        for object in self.objectList:
+            if object.getEventLisnner() and object.isPtsInner((x, y)):
+                for mouseEvent in object.mouseEventCallback:
+                    mouseEvent(object, event)
 
     def draw(self, img=None):
         if img:
