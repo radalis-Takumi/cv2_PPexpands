@@ -45,24 +45,18 @@ class cv2withPPObject:
     def addMouseEventCallback(self, callback):
         self.mouseEventCallback.append(callback)
 
-    def isInner(self, pts_list, point):
-        # 原点から各点へのベクトルを作る
-        vec_list = []
-        for pts in pts_list:
-            vec_list.append(np.array(pts))
-        target_vec = np.array(point)
+    def isInner(self, base_vec, point):
+        # 0行目 -> 末行にした行列を作る
+        dim_vec = base_vec[list(range(1, base_vec.shape[0])) + [0], :]
+
+        # ターゲットの座標を連続した行列を作る
+        target_vec = np.tile(np.array(point), (base_vec.shape[0], 1))
         
         # 外積を求める
-        vec_cross_list = []
-        for i in range(len(vec_list)):
-            vec_cross_list.append(np.cross(vec_list[(i + 1) % len(vec_list)] - vec_list[i], target_vec - vec_list[i]))
+        cross_vec = np.cross(base_vec - dim_vec, target_vec - dim_vec)
 
         # 内外の判定を行う
-        for vec_cross in vec_cross_list:
-            if vec_cross <= 0:
-                return False
-        else:
-            return True
+        return np.all(cross_vec >= 0)
 
 
 class Textbox(cv2withPPObject):
@@ -146,10 +140,10 @@ class Textbox(cv2withPPObject):
         self.setAria()
 
     def isPtsInner(self, mouse_pts):
-        pts = [[self.Ariaorg['xL'], self.Ariaorg['yT']],
-               [self.Ariaorg['xL'], self.Ariaorg['yB']],
-               [self.Ariaorg['xR'], self.Ariaorg['yB']],
-               [self.Ariaorg['xR'], self.Ariaorg['yT']]]
+        pts = np.array([[self.Ariaorg['xL'], self.Ariaorg['yT']],
+                        [self.Ariaorg['xL'], self.Ariaorg['yB']],
+                        [self.Ariaorg['xR'], self.Ariaorg['yB']],
+                        [self.Ariaorg['xR'], self.Ariaorg['yT']]])
         return self.isInner(pts, mouse_pts)
     
     def draw(self, img):
@@ -207,8 +201,8 @@ class Triangle(cv2withPPObject):
     
     def obj_rotete(self, rotate):
         self.b_pts = [[            0, -self.height * 2/3],
-                      [ self.width/2,  self.height/3], 
-                      [-self.width/2,  self.height/3]]
+                      [-self.width/2,  self.height/3], 
+                      [ self.width/2,  self.height/3]]
         radians = -math.radians(rotate) # 回転方向を一般的な感覚（反時計回り）に変更
         for i, pt in enumerate(self.b_pts):
             self.b_pts[i] = [math.cos(radians)*pt[0] - math.sin(radians)*pt[1], math.sin(radians)*pt[0] + math.cos(radians)*pt[1]]
@@ -222,7 +216,7 @@ class Triangle(cv2withPPObject):
         self.obj_move(self.cpt)
 
     def isPtsInner(self, mouse_pts):
-        return self.isInner(self.pts, mouse_pts)
+        return self.isInner(np.array(self.pts), mouse_pts)
 
     def draw(self, img):
         for callback in self.callback:
@@ -264,37 +258,36 @@ class Rectangle(cv2withPPObject):
         self.rotate = rotate % 360
         self.fillcolor = fillcolor
         self.framecolor = framecolor
-        self.update()
-        
+        self.update(rad=self.rad)
+    
+    def set_contours(self):
+        tmpimg = np.full((self.height + 10, self.width + 10, 1), 0, dtype=np.uint8)
+        b_pts = [[round(x + self.width/2 + 5), round(y + self.height/2 + 5)] for x, y in self.b_pts]
+        radcb_pts = [[round(x + self.width/2 + 5), round(y + self.height/2 + 5)] for x, y in self.radcb_pts]
+        pts = np.array(b_pts)
+        cv2.fillPoly(tmpimg, [pts], (255, 255, 255), lineType=cv2.LINE_AA, shift=0)
+        for c_pts in radcb_pts:
+            cv2.circle(tmpimg, tuple(c_pts), self.rad, (255, 255, 255), thickness=-1, lineType=cv2.LINE_AA)
+        contours, hierarchy = cv2.findContours(tmpimg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        self.b_contours = contours[0] - np.array([round(self.width/2 + 5), round(self.height/2 + 5)])
+
     def obj_move(self, cpt):
-        self.pts1 = []
-        self.pts2 = []
-        self.radc_pts = []
-        for pt in self.b_pts1:
-            self.pts1.append([round(cpt[0] + pt[0]), round(cpt[1] + pt[1])])
-        for pt in self.b_pts2:
-            self.pts2.append([round(cpt[0] + pt[0]), round(cpt[1] + pt[1])])
-        for pt in self.radcb_pts:
-            self.radc_pts.append([round(cpt[0] + pt[0]), round(cpt[1] + pt[1])])
+        self.contours = self.contours + np.array(cpt)
     
     def obj_rotete(self, rotate):
         radians = -math.radians(rotate) # 回転方向を一般的な感覚（反時計回り）に変更
-        for i, pt in enumerate(self.b_pts1):
-            self.b_pts1[i] = [math.cos(radians)*pt[0] - math.sin(radians)*pt[1], math.sin(radians)*pt[0] + math.cos(radians)*pt[1]]
-        for i, pt in enumerate(self.b_pts2):
-            self.b_pts2[i] = [math.cos(radians)*pt[0] - math.sin(radians)*pt[1], math.sin(radians)*pt[0] + math.cos(radians)*pt[1]]
-        for i, pt in enumerate(self.radcb_pts):
-            self.radcb_pts[i] = [math.cos(radians)*pt[0] - math.sin(radians)*pt[1], math.sin(radians)*pt[0] + math.cos(radians)*pt[1]]
+        self.contours = np.dot(self.b_contours, np.array([[math.cos(radians), math.sin(radians)], [-math.sin(radians), math.cos(radians)]]))
+        self.contours = np.round(self.contours).astype(int)
 
     def obj_radChange(self, rad):
-        self.b_pts1 = [[-(self.width/2 - rad), -self.height/2],
-                       [ (self.width/2 - rad), -self.height/2], 
-                       [ (self.width/2 - rad),  self.height/2], 
-                       [-(self.width/2 - rad),  self.height/2]]
-        self.b_pts2 = [[-self.width/2, -(self.height/2 - rad)],
-                       [ self.width/2, -(self.height/2 - rad)], 
-                       [ self.width/2,  (self.height/2 - rad)], 
-                       [-self.width/2,  (self.height/2 - rad)]]
+        self.b_pts = [[-(self.width/2 - rad), -self.height/2],
+                      [ (self.width/2 - rad), -self.height/2], 
+                      [ self.width/2, -(self.height/2 - rad)], 
+                      [ self.width/2,  (self.height/2 - rad)], 
+                      [ (self.width/2 - rad),  self.height/2], 
+                      [-(self.width/2 - rad),  self.height/2], 
+                      [-self.width/2,  (self.height/2 - rad)], 
+                      [-self.width/2, -(self.height/2 - rad)]]
         self.radcb_pts = [[-(self.width/2 - rad), -(self.height/2 - rad)],
                          [ (self.width/2 - rad), -(self.height/2 - rad)], 
                          [ (self.width/2 - rad),  (self.height/2 - rad)], 
@@ -303,34 +296,25 @@ class Rectangle(cv2withPPObject):
     def update(self, rad=None, rotate=None, cpt=None):
         if not rad is None:
             self.rad = rad if rad <= min(self.width/2, self.height) else min(self.width/2, self.height)
+            self.obj_radChange(self.rad)
+            self.set_contours()
         if rotate:
             self.rotate = rotate % 360
         if cpt:
             self.cpt = cpt
-        self.obj_radChange(self.rad)
         self.obj_rotete(self.rotate)
         self.obj_move(self.cpt)
 
     def isPtsInner(self, mouse_pts):
-        return self.isInner(self.contours, mouse_pts)
+        return self.isInner(self.contours[:, 0, :], mouse_pts)
 
     def draw(self, img):
         for callback in self.callback:
             callback()
-        h, w, _ = img.shape
-        tmpimg = np.full((h, w, 1), 0, dtype=np.uint8)
-        pts1 = np.array(self.pts1)
-        pts2 = np.array(self.pts2)
-        cv2.fillPoly(tmpimg, [pts1], (255, 255, 255), lineType=cv2.LINE_AA, shift=0)
-        cv2.fillPoly(tmpimg, [pts2], (255, 255, 255), lineType=cv2.LINE_AA, shift=0)
-        for c_pts in self.radc_pts:
-            cv2.circle(tmpimg, (c_pts[0], c_pts[1]), self.rad, (255, 255, 255), thickness=-1, lineType=cv2.LINE_AA)
-        self.contours, hierarchy = cv2.findContours(tmpimg, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-        print(self.contours)
         if self.fillcolor:
-            cv2.drawContours(img, self.contours, -1, self.fillcolor, -1, lineType=cv2.LINE_AA)
+            cv2.drawContours(img, (self.contours,), -1, self.fillcolor, -1, lineType=cv2.LINE_AA)
         if self.framecolor:
-            cv2.drawContours(img, self.contours, -1, self.framecolor, 1, lineType=cv2.LINE_AA)
+            cv2.drawContours(img, (self.contours,), -1, self.framecolor, 1, lineType=cv2.LINE_AA)
         return img
     
 class Ellipse(cv2withPPObject):
@@ -343,6 +327,14 @@ class Ellipse(cv2withPPObject):
         self.endAngle = endAngle
         self.fillcolor = fillcolor
         self.framecolor = framecolor
+    
+    def isPtsInner(self, mouse_pts):
+        x, y = mouse_pts
+        x_d, y_d = self.cpt
+        x_r, y_r = self.axes
+        judge = True if ((x - x_d) / x_r)**2 + ((y - y_d) / y_r)**2 - 1 < 0 else False
+        return judge
+
     
     def draw(self, img):
         for callback in self.callback:
