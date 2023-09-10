@@ -364,11 +364,8 @@ class BarGraph(cv2withPPObject):
                 if elv > self.maxh:
                     self.maxh = elv
     
-    def setDisplay(self, flag):
-        self.display = flag
-        
-    def getDisplay(self):
-        return self.display
+    def isPtsInner(self, mouse_pts):
+        return False
     
     def draw(self, img):
         for callback in self.callback:
@@ -413,6 +410,9 @@ class Calender(cv2withPPObject):
                     continue
                 self.txt_list.append(Textbox(str(day), (self.cpt[0] - self.size * (6 - j * 2), self.cpt[1] - self.size * (3 - i * 2)), 
                                      'C:\Windows\Fonts\msgothic.ttc', self.size, (0,0,0), anchor='mm'))
+    
+    def isPtsInner(self, mouse_pts):
+        return False
     
     def draw(self, img):
         for callback in self.callback:
@@ -523,6 +523,9 @@ class Figure(cv2withPPObject):
             self.rotate = rotate
         self.loadImgFile()
         self.setupIMG()
+    
+    def isPtsInner(self, mouse_pts):
+        return False
     
     def draw(self, img):
         for callback in self.callback:
