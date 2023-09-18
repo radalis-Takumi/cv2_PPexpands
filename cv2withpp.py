@@ -345,7 +345,7 @@ class Ellipse(cv2withPPObject):
             cv2.ellipse(img, self.cpt, self.axes, -self.rotate, -self.startAngle, -self.endAngle, self.framecolor, thickness=1, lineType=cv2.LINE_AA)
 
 class BarGraph(cv2withPPObject):
-    def __init__(self, cpt, width, height, barw=2, baselinecolor=None, data=[], color=[(0,0,0)], key=''):
+    def __init__(self, cpt, width, height, barw=2, baselinecolor=None, data=[], color=[(0,0,0)], x_label=True, y_label=True, key=''):
         super().__init__(key)
         self.cpt = cpt
         self.width = width
@@ -354,7 +354,20 @@ class BarGraph(cv2withPPObject):
         self.baselinecolor = baselinecolor
         self.color = color
         self.display = True
-        self.inputData(data)
+
+        # マウスイベントを定義する
+        self.mouseEventCallback.append(self.callbackManager)
+        self.mouseEventCallbackList = []
+        self.mouseFlag = -1
+
+        self.update(data)
+
+    def setBarArea(self):
+        self.barAreaDict = {'T':round(self.cpt[1] - self.height), 'B':round(self.cpt[1]),
+                            'X_list':[]}
+        for i, v in enumerate(self.data):
+            x_pt = self.cpt[0] - (len(self.data) - 1 - i*2) * self.width/(len(self.data) * 2)
+            self.barAreaDict['X_list'].append({'L':round(x_pt - self.barw/2), 'R':round(x_pt + self.barw/2)})
     
     def update(self, data):
         self.data = data
@@ -363,9 +376,33 @@ class BarGraph(cv2withPPObject):
             for elv in v[1:]:
                 if elv > self.maxh:
                     self.maxh = elv
+        self.setBarArea()
+
+    def callbackManager(self, layer, selfobject, event):
+        if self.mouseFlag >= 0:
+            center = (round(self.cpt[0] - (len(self.data) - 1 - self.mouseFlag*2) * self.width/(len(self.data) * 2)), round(self.cpt[1] - self.height/2))
+            self.mouseEventCallbackList[0](layer, self, event, [self.mouseFlag, center])
+
+    def addMouseEventCallback(self, callback):
+        self.mouseEventCallbackList.append(callback)
     
     def isPtsInner(self, mouse_pts):
-        return False
+        for i, elem in enumerate(self.barAreaDict['X_list']):
+            pts = np.array([[elem['L'], self.barAreaDict['T']],
+                            [elem['L'], self.barAreaDict['B']],
+                            [elem['R'], self.barAreaDict['B']],
+                            [elem['R'], self.barAreaDict['T']]])
+            ret = self.isInner(pts, mouse_pts)
+            if ret:
+                self.mouseFlag = i
+                break
+        else:
+            # 一致するものがなければFalse
+            self.mouseFlag = -1
+            return False
+        
+        # breakが起きるとTrue
+        return True
     
     def draw(self, img):
         for callback in self.callback:
@@ -382,13 +419,53 @@ class BarGraph(cv2withPPObject):
         return img
 
 class Calender(cv2withPPObject):
-    def __init__(self, cpt, year, month, size=10, key=''):
+    def __init__(self, cpt, year, month, size=10, bgcolor=None, key=''):
         super().__init__(key)
         self.year = year
         self.month = month
         self.cpt = cpt
         self.size = size
+        self.bgcolor = bgcolor
+        
+        # マウスイベントを定義する
+        self.mouseEventCallback.append(self.callbackManager)
+        self.mouseEventCallbackList = []
+        self.mouseFlag = -1
+
         self.update()
+
+    def setCellArea(self):
+        self.drawdata = {
+            'baseArea': {
+                'l': self.cpt[0] - self.size * 7.3,
+                'r': self.cpt[0] + self.size * 7.3,
+                't': self.cpt[1] - self.size * 8.3,
+                'b': self.cpt[1] + self.size * 8.3
+            },
+            'mainBaseArea': {
+                'l': self.cpt[0] - self.size * 7,
+                'r': self.cpt[0] + self.size * 7,
+                't': self.cpt[1] - self.size * 8,
+                'b': self.cpt[1] + self.size * 8
+            },
+            'YearMonthArea': {
+                'value': -10,
+                'l': self.cpt[0] - self.size * 4,
+                'r': self.cpt[0] + self.size * 4,
+                't': self.cpt[1] - self.size * 8,
+                'b': self.cpt[1] - self.size * 6
+            },
+            'DayArea':[]
+        }
+        for i, week in enumerate([[-1, -2, -3, -4, -5, -6, -7]] + calendar.monthcalendar(self.year, self.month)):
+            for j, day in enumerate(week):
+                self.drawdata['DayArea'].append({
+                    'value': day,
+                    'l': self.cpt[0] - self.size * (7 - j * 2),
+                    'r': self.cpt[0] - self.size * (5 - j * 2),
+                    't': self.cpt[1] - self.size * (6 - i * 2),
+                    'b': self.cpt[1] - self.size * (4 - i * 2)
+                })
     
     def update(self, cpt=None, year=None, month=None):
         if cpt:
@@ -410,31 +487,80 @@ class Calender(cv2withPPObject):
                     continue
                 self.txt_list.append(Textbox(str(day), (self.cpt[0] - self.size * (6 - j * 2), self.cpt[1] - self.size * (3 - i * 2)), 
                                      'C:\Windows\Fonts\msgothic.ttc', self.size, (0,0,0), anchor='mm'))
+        self.setCellArea()
+    
+    def callbackManager(self, layer, selfobject, event):
+        if self.mouseFlag >= 0:
+            center = (round((self.drawdata['DayArea'][self.mouseFlag]['r'] + self.drawdata['DayArea'][self.mouseFlag]['l'])/2),
+                      round((self.drawdata['DayArea'][self.mouseFlag]['b'] + self.drawdata['DayArea'][self.mouseFlag]['t'])/2))
+            self.mouseEventCallbackList[0](layer, self, event, [self.drawdata['DayArea'][self.mouseFlag]['value'], center])
+        elif self.mouseFlag == -10:
+            center = (round((self.drawdata['YearMonthArea']['r'] + self.drawdata['YearMonthArea']['l'])/2),
+                      round((self.drawdata['YearMonthArea']['b'] + self.drawdata['YearMonthArea']['t'])/2))
+            self.mouseEventCallbackList[0](layer, self, event, [self.drawdata['YearMonthArea']['value'], center])
+
+    def addMouseEventCallback(self, callback):
+        self.mouseEventCallbackList.append(callback)
     
     def isPtsInner(self, mouse_pts):
-        return False
+        for i, day in enumerate(self.drawdata['DayArea']):
+            pts = np.array([[day['l'], day['t']],
+                            [day['l'], day['b']],
+                            [day['r'], day['b']],
+                            [day['r'], day['t']]])
+            ret = self.isInner(pts, mouse_pts)
+            if ret:
+                self.mouseFlag = i
+                break
+        else:
+            pts = np.array([[self.drawdata['YearMonthArea']['l'], self.drawdata['YearMonthArea']['t']],
+                            [self.drawdata['YearMonthArea']['l'], self.drawdata['YearMonthArea']['b']],
+                            [self.drawdata['YearMonthArea']['r'], self.drawdata['YearMonthArea']['b']],
+                            [self.drawdata['YearMonthArea']['r'], self.drawdata['YearMonthArea']['t']]])
+            ret = self.isInner(pts, mouse_pts)
+            if ret:
+                self.mouseFlag = -10
+                return True
+            else:
+                # 一致するものがなければFalse
+                self.mouseFlag = -1
+                return False
+        
+        # breakが起きるとTrue
+        return True
     
     def draw(self, img):
         for callback in self.callback:
             callback()
-        cv2.rectangle(img, (round(self.cpt[0] - self.size * 7.3), round(self.cpt[1] - self.size * 8.3)), 
-                      (round(self.cpt[0] + self.size * 7.3), round(self.cpt[1] + self.size * 8.3)), (0, 0, 0), thickness=1)
-        cv2.rectangle(img, (round(self.cpt[0] - self.size * 7), round(self.cpt[1] - self.size * 8)), 
-                      (round(self.cpt[0] + self.size * 7), round(self.cpt[1] + self.size * 8)), (0, 0, 0), thickness=1)
-        cv2.rectangle(img, (self.cpt[0] - self.size * 4, self.cpt[1] - self.size * 8), (self.cpt[0] + self.size * 4, self.cpt[1] - self.size * 6),
-                       (0, 0, 0), thickness=1)
-        for i, week in enumerate([[0, 0, 0, 0, 0, 0, 0]] + calendar.monthcalendar(self.year, self.month)):
-            for j, day in enumerate(week):
-                if j == 5:
-                    cv2.rectangle(img, (self.cpt[0] - self.size * (7 - j * 2), self.cpt[1] - self.size * (6 - i * 2)),
-                       (self.cpt[0] - self.size * (5 - j * 2), self.cpt[1] - self.size * (4 - i * 2)), (255, 144, 30), thickness=-1)
-                elif j == 6 or (day > 0 and jpholiday.is_holiday(datetime.date(self.year, self.month, day))):  
-                    cv2.rectangle(img, (self.cpt[0] - self.size * (7 - j * 2), self.cpt[1] - self.size * (6 - i * 2)),
-                       (self.cpt[0] - self.size * (5 - j * 2), self.cpt[1] - self.size * (4 - i * 2)), (0, 0, 255), thickness=-1)
-                cv2.rectangle(img, (self.cpt[0] - self.size * (7 - j * 2), self.cpt[1] - self.size * (6 - i * 2)),
-                       (self.cpt[0] - self.size * (5 - j * 2), self.cpt[1] - self.size * (4 - i * 2)), (0, 0, 0), thickness=1)
+
+        # カレンダー領域を描画
+        if self.bgcolor:
+            cv2.rectangle(img, (round(self.drawdata['baseArea']['l']), round(self.drawdata['baseArea']['t'])), 
+                               (round(self.drawdata['baseArea']['r']), round(self.drawdata['baseArea']['b'])), self.bgcolor, thickness=-1)
+        cv2.rectangle(img, (round(self.drawdata['baseArea']['l']), round(self.drawdata['baseArea']['t'])), 
+                           (round(self.drawdata['baseArea']['r']), round(self.drawdata['baseArea']['b'])), (0, 0, 0), thickness=1)
+        cv2.rectangle(img, (round(self.drawdata['mainBaseArea']['l']), round(self.drawdata['mainBaseArea']['t'])), 
+                           (round(self.drawdata['mainBaseArea']['r']), round(self.drawdata['mainBaseArea']['b'])), (0, 0, 0), thickness=1)
+        
+        # 年月の表示位置
+        cv2.rectangle(img, (round(self.drawdata['YearMonthArea']['l']), round(self.drawdata['YearMonthArea']['t'])), 
+                           (round(self.drawdata['YearMonthArea']['r']), round(self.drawdata['YearMonthArea']['b'])), (0, 0, 0), thickness=1)
+        
+        # 日の表示位置
+        for i, day in enumerate(self.drawdata['DayArea']):
+            # 土曜日をシアンに塗りつぶす
+            if i % 7 == 5:
+                cv2.rectangle(img, (day['l'], day['t']), (day['r'], day['b']), (255, 144, 30), thickness=-1)
+            # 日曜日 or 祝日を赤に塗りつぶす
+            elif i % 7 == 6:
+                cv2.rectangle(img, (day['l'], day['t']), (day['r'], day['b']), (0, 0, 255), thickness=-1)
+            # 各日の枠を描画
+            cv2.rectangle(img, (day['l'], day['t']), (day['r'], day['b']), (0, 0, 0), thickness=1)
+
+        # テキストの表示位置
         for txtobj in self.txt_list:
             txtobj.draw(img)
+        
         return img
     
 class Figure(cv2withPPObject):
@@ -620,7 +746,8 @@ class Layer:
         for object in self.objectList:
             if object.getEventLisnner() and object.isPtsInner((x, y)):
                 for mouseEvent in object.mouseEventCallback:
-                    mouseEvent(object, event)
+                    mouseEvent(self, object, event)
+                break
 
     def draw(self, img=None):
         if img:
