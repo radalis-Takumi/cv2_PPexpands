@@ -6,19 +6,18 @@ def test3(self):
     x = (self['text'].cpt[0] + 1) % 600
     self['text'].update(cpt=(x, 100))
 
-def click(self, event):
+def click(self, selfobject, event, patam):
     if event == cv2.EVENT_LBUTTONDOWN:
-        print('OK')
+        print(patam)
 
 def main():
+    data = [[0, 1], [1, 2], [2, 3], [3, 5], [4, 4]]
     layer = cv2withpp.Layer(width=800, height=600, color=(255, 255, 0))
-    # figure = cv2withpp.Figure('./sample/test.png', (50, 100), rotate=45, mode='rgba')
-    # rect = cv2withpp.Rectangle((50, 100), 50, 50, fillcolor=(0, 0, 255), rad=10)
-    tri = cv2withpp.Triangle((50, 100), 80, 70, fillcolor=(0, 0, 255))
-    # text = cv2withpp.Textbox('text', (50, 100), 'C:\Windows\Fonts\msgothic.ttc', 30, (255,0,0), framecolor=(0, 255, 0), anchor='la')
-    tri.setEventLisnner(True)
-    tri.addMouseEventCallback(click)
-    layer['tri'] = tri
+    # bargraph = cv2withpp.BarGraph((200, 200), 300, 100, barw=15, baselinecolor=(0, 0, 0), data=data, color=[(0, 0, 255)])
+    calender = cv2withpp.Calender((200, 200), 2023, 9, size=15, bgcolor=(255, 255, 255))
+    calender.setEventLisnner(True)
+    calender.addMouseEventCallback(click)
+    layer['calender'] = calender
     # layer.addCallback_useSelf(test3)
     layer.displayMouse(True)
     layer.run_Async(interval=10)
